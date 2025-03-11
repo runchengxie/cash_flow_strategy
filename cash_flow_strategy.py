@@ -439,13 +439,13 @@ plt.tight_layout()
 plt.show()
     
     # 原结果输出与保存（若需要仍可保留）
-    try:
-        import ace_tools as tools
-        tools.display_dataframe_to_user(name="精选股票名单", dataframe=selected)
-    except Exception as e:
-        print("ace_tools 模块不可用，直接输出结果：")
-        print(selected)
-    
-    drive.mount('/content/drive')
-    selected.to_csv("/content/drive/MyDrive/final_index_components.csv", index=False)
-    print("结果已保存到 Google Drive")
+try:
+    import ace_tools as tools
+    tools.display_dataframe_to_user(name="精选股票名单", dataframe=selected)
+except Exception as e:
+    print("ace_tools 模块不可用，直接输出结果：")
+    print(selected)
+
+drive.mount('/content/drive')
+selected.to_csv("/content/drive/MyDrive/final_index_components.csv", index=False)
+print("结果已保存到 Google Drive")
