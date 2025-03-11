@@ -305,12 +305,32 @@ def get_rebalancing_dates(start_date, end_date):
     rebalancing_dates.sort()
     return rebalancing_dates
 
+# 新增函数：获取分红数据并计算分红收益率
+def get_dividends(ts_code, start_date, end_date):
+    """
+    使用 Tushare 获取指定股票在持仓期间的分红数据，计算分红收益率。
+    假设字段 'div_cash' 表示每股现金分红，返回的总分红需要除以初始价格来得到收益率。
+    """
+    try:
+        div_df = pro.dividend(ts_code=ts_code, start_date=start_date, end_date=end_date,
+                               fields='ts_code, ex_date, div_cash')
+        if div_df.empty:
+            return 0.0
+        # 此处简化处理：将所有分红累加后返回
+        div_total = div_df['div_cash'].sum()
+        return div_total
+    except Exception as e:
+        print(f"获取 {ts_code} 分红数据失败: {e}")
+        return 0.0
+
+# 修改函数：计算组合收益时考虑分红再投资（采用复合收益因子）
 def compute_portfolio_return(selected, start_date, end_date):
     """
-    对选出股票从 start_date 到 end_date 的持仓期计算等权组合收益
-    采用 Tushare daily 数据获取收盘价计算收益率
+    对选出股票从 start_date 到 end_date 的持仓期间计算等权组合总收益，
+    计算逻辑：对于每只股票，收益因子 = (收盘价 + 持仓期内累计分红) / 起始价，
+    然后组合收益率为各股票收益因子均值减 1。
     """
-    returns = []
+    factors = []
     for code in selected['ts_code']:
         try:
             df = pro.daily(ts_code=code, start_date=start_date, end_date=end_date, fields='trade_date, close')
@@ -319,25 +339,36 @@ def compute_portfolio_return(selected, start_date, end_date):
             df = df.sort_values('trade_date')
             start_price = df.iloc[0]['close']
             end_price = df.iloc[-1]['close']
-            returns.append((end_price / start_price) - 1)
+            # 获取持仓期间累计分红
+            div_total = get_dividends(code, start_date, end_date)
+            # 计算复合因子：将分红再投资（直接加到最终价格）
+            factor = (end_price + div_total) / start_price
+            factors.append(factor)
         except Exception as e:
             print(f"Error fetching data for {code}: {e}")
-    if returns:
-        return np.mean(returns)
+    if factors:
+        avg_factor = np.mean(factors)
+        return avg_factor - 1
     else:
         return 0.0
 
 import yfinance as yf
+# 修改函数：使用除权价格计算标普收益（反映分红再投资）
 def get_benchmark_return_yf(ticker, start_date, end_date):
     """
-    使用 yfinance 获取 benchmark（例如标普500）的收益率
+    使用 yfinance 获取 benchmark（例如标普500）的收益率，
+    优先使用 'Adj Close'（除权价格，体现分红再投资后效果）。
     """
     data = yf.download(ticker, start=pd.to_datetime(start_date).strftime('%Y-%m-%d'),
                              end=pd.to_datetime(end_date).strftime('%Y-%m-%d'))
     if data.empty:
         return 0.0
-    start_price = data.iloc[0]['Close']
-    end_price = data.iloc[-1]['Close']
+    if 'Adj Close' in data.columns:
+        start_price = data.iloc[0]['Adj Close']
+        end_price = data.iloc[-1]['Adj Close']
+    else:
+        start_price = data.iloc[0]['Close']
+        end_price = data.iloc[-1]['Close']
     return (end_price / start_price) - 1
 
 def get_benchmark_return_ts(ts_code, start_date, end_date):
@@ -386,19 +417,26 @@ if __name__ == '__main__':
     sp500_cum = np.cumprod([1 + r for r in sp500_returns]) - 1
     csi300_cum = np.cumprod([1 + r for r in csi300_returns]) - 1
     
-    # 绘制回测与Benchmark收益对比图
-    import matplotlib.pyplot as plt
-    plt.figure(figsize=(10, 6))
-    plt.plot(period_dates, cumulative_return, label='策略组合')
-    plt.plot(period_dates, sp500_cum, label='标普500')
-    plt.plot(period_dates, csi300_cum, label='沪深300')
-    plt.xlabel('调仓日期')
-    plt.ylabel('累计收益率')
-    plt.title('策略组合与Benchmark收益对比')
-    plt.legend()
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    plt.show()
+# 修改图表部分：配置中文字体为 SimHei，若不可用则退化到英文
+import matplotlib.pyplot as plt
+import matplotlib
+try:
+    matplotlib.rcParams['font.sans-serif'] = ['SimHei']  # 尝试使用SimHei中文字体
+except Exception as e:
+    print("SimHei 字体不可用，使用 默认字体，并将标签调整为英文")
+    matplotlib.rcParams['font.sans-serif'] = ['Arial']
+    
+plt.figure(figsize=(10, 6))
+plt.plot(period_dates, cumulative_return, label='Strategy')
+plt.plot(period_dates, sp500_cum, label='S&P500')
+plt.plot(period_dates, csi300_cum, label='CSI300')
+plt.xlabel('Rebalance Date')
+plt.ylabel('Cumulative Return')
+plt.title('Portfolio vs. Benchmark Returns')
+plt.legend()
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
     
     # 原结果输出与保存（若需要仍可保留）
     try:
