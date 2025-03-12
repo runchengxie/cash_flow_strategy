@@ -70,14 +70,14 @@ if os.path.exists(trade_data_file):
     with open(trade_data_file, 'rb') as f:
         trade_data = pickle.load(f)
     print("加载缓存的日均成交数据")
-    
+
     # 新增逻辑：检查缓存中最后的交易日期
     if not trade_data.empty and 'trade_date' in trade_data.columns:
         last_trade_date = trade_data['trade_date'].max()
         print(f"缓存中最后交易日期：{last_trade_date}")
     else:
         last_trade_date = None
-    
+
     # 获取交易日历，并筛选出比缓存中最后日期更新的日期
     cal_df = pro.trade_cal(exchange='SSE', is_open='1',
                            start_date=last_trade_date if last_trade_date else TIME_RANGE_START,
@@ -87,7 +87,7 @@ if os.path.exists(trade_data_file):
         new_trade_dates = [d for d in all_trade_dates if d > last_trade_date]
     else:
         new_trade_dates = all_trade_dates
-    
+
     # 增量下载新数据（如果有更新）
     if new_trade_dates:
         def get_daily_basic(trade_date, retries=3):
@@ -100,7 +100,7 @@ if os.path.exists(trade_data_file):
                     print(f"获取 {trade_date} 数据时出错: {e}")
                     time.sleep(1)
             return pd.DataFrame()
-    
+
         trade_data_list = []
         for date in tqdm(new_trade_dates, desc="增量获取日均成交金额数据"):
             df = get_daily_basic(date)
@@ -118,12 +118,12 @@ if os.path.exists(trade_data_file):
             print("没有新增日均成交数据")
     else:
         print("缓存已是最新，无需更新")
-    
+
 else:
     # 利用交易日历获取所有有效的交易日
     cal_df = pro.trade_cal(exchange='SSE', is_open='1', start_date=TIME_RANGE_START, end_date=TIME_RANGE_END, fields='cal_date')
     trade_dates = cal_df['cal_date'].tolist()
-    
+
     # 定义带重试机制的辅助函数
     def get_daily_basic(trade_date, retries=3):
         for _ in range(retries):
@@ -135,7 +135,7 @@ else:
                 print(f"获取 {trade_date} 数据时出错: {e}")
                 time.sleep(1)
         return pd.DataFrame()
-    
+
     trade_data_list = []
     for date in tqdm(trade_dates, desc="获取日均成交金额数据"):
         df = get_daily_basic(date)
@@ -251,14 +251,14 @@ def select_stocks(cutoff_date):
     # 2.2 合并行业信息并剔除金融、房地产
     selected_stocks = selected_stocks.merge(stock_list[['ts_code', 'industry']], on="ts_code", how="left")
     selected_stocks = selected_stocks[~selected_stocks['industry'].isin(['金融', '房地产'])]
-    
+
     # 2.3 ROE稳定性筛选
     if not roe_data.empty:
         roe_rank_threshold = roe_data['roe_std'].quantile(0.9)
         roe_selected = roe_data[roe_data['roe_std'] < roe_rank_threshold]
     else:
         roe_selected = pd.DataFrame()
-    
+
     # 2.4 财务健康度筛选
     cashflow_selected = cashflow_data[
         (cashflow_data['free_cashflow'] > 0) &
@@ -268,7 +268,7 @@ def select_stocks(cutoff_date):
     # 2.5 剔除经营现金流占营业利润排名后30%的股票
     cash_to_op_income_threshold = cashflow_selected['cash_to_op_income'].quantile(0.3)
     cashflow_selected = cashflow_selected[cashflow_selected['cash_to_op_income'] > cash_to_op_income_threshold]
-    
+
     # 3. 排序并选股
     final_candidates = cashflow_selected[['ts_code', 'fcf_rate']].dropna()
     final_candidates = final_candidates.sort_values(by='fcf_rate', ascending=False)
@@ -390,7 +390,7 @@ if __name__ == '__main__':
     end_date   = TIME_RANGE_END
     rebal_dates = get_rebalancing_dates(start_date, end_date)
     print("调仓日期：", rebal_dates)
-    
+
     portfolio_returns = []
     period_dates = []  # 用于绘图横轴
     for i in range(len(rebal_dates) - 1):
@@ -402,10 +402,10 @@ if __name__ == '__main__':
         portfolio_returns.append(period_ret)
         period_dates.append(current_date)
         print(f"调仓周期 {current_date} 到 {next_date}：收益率 = {period_ret:.2%}")
-    
+
     # 计算累计收益率
     cumulative_return = np.cumprod([1 + r for r in portfolio_returns]) - 1
-    
+
     # Benchmark收益率计算
     sp500_returns = []
     csi300_returns = []
@@ -416,7 +416,7 @@ if __name__ == '__main__':
         csi300_returns.append(get_benchmark_return_ts('000300.SH', current_date, next_date))
     sp500_cum = np.cumprod([1 + r for r in sp500_returns]) - 1
     csi300_cum = np.cumprod([1 + r for r in csi300_returns]) - 1
-    
+
 # 修改图表部分：配置中文字体为 SimHei，若不可用则退化到英文
 import matplotlib.pyplot as plt
 import matplotlib
@@ -425,7 +425,7 @@ try:
 except Exception as e:
     print("SimHei 字体不可用，使用 默认字体，并将标签调整为英文")
     matplotlib.rcParams['font.sans-serif'] = ['Arial']
-    
+
 plt.figure(figsize=(10, 6))
 plt.plot(period_dates, cumulative_return, label='Strategy')
 plt.plot(period_dates, sp500_cum, label='S&P500')
@@ -437,7 +437,7 @@ plt.legend()
 plt.xticks(rotation=45)
 plt.tight_layout()
 plt.show()
-    
+
     # 原结果输出与保存（若需要仍可保留）
 try:
     import ace_tools as tools
